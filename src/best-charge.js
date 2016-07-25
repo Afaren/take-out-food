@@ -2,90 +2,25 @@ function formatItems(selectedItems) {
   return selectedItems.map(item => {
     let itemPart = item.split(' x ');
     return {
-      id: itemPart[0],
-      count: Number.parseInt(itemPart[1])
-    }
-  });
-}
-
-function getItemInfoList(allItems, formattedItems) {
-  return formattedItems.map(item=> {
-    let found = allItems.find(entry => entry.id === item.id);
-    return Object.assign({}, item, found);
+      id: itemPart[0], count: Number.parseInt(itemPart[1])
+    };
   })
 }
 
-function calculateTotalPrice(itemInfoList) {
-  let totalPrice = 0;
-  for (let item of itemInfoList) {
-    totalPrice += item.price * item.count;
-  }
-  return totalPrice;
-  // todo
-  // return itemInfoList.reduce((acc, cur) => {
-  //   return acc += cur.price * cur.count;
-  // }, 0);
+function getCartItemList(allItems, formattedItems) {
+  return formattedItems.map(item => {
+    return Object.assign({}, allItems.find(entry => entry.id === item.id), {count: item.count});
+  });
 }
 
-function getPromotionInfo(totalPrice, allPromotions, itemInfoList) {
 
-  // get promoting items
-  let promotingItems = [];
-  for (let element of itemInfoList) {
-    let found = allPromotions.find(item => item.hasOwnProperty('items')).items.find(id => id === element.id);
-    if (found) {
-      let item = itemInfoList.find(entry => entry.id === found);
-      promotingItems.push(item);
-    }
-  }
-
-
-  let disount = 0;
-
-  if (promotingItems.length >= 1) {
-    for (let entry of promotingItems) {
-      let found = itemInfoList.find(item => item.id === entry.id);
-      if (found) {
-        disount += found.count * found.price / 2;
-      }
-    }
-  }
-
-  let promotion = {};
-
-  if (totalPrice < 30) {
-    if (promotingItems.length < 1) {
-      // promotion should be empty
-    } else {
-      promotion.type = '指定菜品半价';
-      promotion.items = promotingItems;
-      promotion.discount = disount;
-    }
-  } else {
-    // totalPrice >= 30
-    if (promotingItems.length < 1) {
-      promotion.type = '满30减6元';
-      promotion.discount = 6;
-    } else {
-      if (disount > 6) {
-        promotion.type = '指定菜品半价';
-        promotion.discount = disount;
-        promotion.items = promotingItems;
-      } else {
-        promotion.type = '满30减6元';
-        promotion.discount = 6;
-      }
-    }
-  }
-
-  let promotionInfo = {
-    items: itemInfoList,
-    promotion: promotion
-  };
-
-  return promotionInfo;
+function calculateTotalPrice(cartItemList) {
+  return cartItemList.reduce((acc, cur) => {
+    return acc += cur.price * cur.count
+  }, 0);
 
 }
+
 
 function generateSummary(totalPrice, itemsWithPromotion) {
 
@@ -124,13 +59,81 @@ function generateSummary(totalPrice, itemsWithPromotion) {
 
 }
 
+
+function calculatePromotion(totalPrice, allPromotions, cartItemlist) {
+
+  let promotingItems = getPromotingItems(allPromotions, cartItemlist);
+  let discount = getDiscount(cartItemlist, promotingItems);
+  let promotion = getPromotion(totalPrice, promotingItems, discount);
+
+  return {
+    items: cartItemlist,
+    promotion: promotion
+  };
+
+  function getPromotingItems(allPromotions, cartItemlist) {
+    return cartItemlist.reduce((acc, cur) => {
+        let found = allPromotions.find(item => item.hasOwnProperty('items')).items.find(id => id === cur.id);
+        if (found) {
+          let item = cartItemlist.find(entry => entry.id === found);
+          acc.push(item);
+        }
+        return acc;
+      }
+      , []);
+  }
+
+
+  function getPromotion(totalPrice, promotingItems, discount) {
+    let promotion = {};
+
+    if (promotingItems.length < 1) {
+      if (totalPrice < 30) {
+        // empty non-promotion
+      }
+      else {
+        promotion.type = '满30减6元';
+        promotion.discount = 6;
+      }
+    }
+    else {
+      if (totalPrice > 30 && discount <= 6) {
+        promotion.type = '满30减6元';
+        promotion.discount = 6;
+      }
+      else {
+        promotion.type = '指定菜品半价';
+        promotion.items = promotingItems;
+        promotion.discount = discount;
+      }
+    }
+
+    return promotion;
+
+  }
+
+  function getDiscount(cartItemList, promotingItems) {
+    return promotingItems.length > 1 ? 0 :
+      promotingItems.reduce((acc, cur) => {
+        let found = cartItemList.find(item => item.id === cur.id);
+        return acc += found.count * found.price / 2;
+      }, 0)
+  }
+
+
+
+
+
+}
+
+
 function bestCharge(selectedItems) {
   let formattedItems = formatItems(selectedItems);
   let allItems = loadAllItems();
-  let itemInfoList = getItemInfoList(allItems, formattedItems);
+  let itemInfoList = getCartItemList(allItems, formattedItems);
   let totalPrice = calculateTotalPrice(itemInfoList);
   let allPromotions = loadPromotions();
-  let itemsWithPromotion = getPromotionInfo(totalPrice, allPromotions, itemInfoList);
+  let itemsWithPromotion = calculatePromotion(totalPrice, allPromotions, itemInfoList);
   let summary = generateSummary(totalPrice, itemsWithPromotion);
   return summary;
 }
